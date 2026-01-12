@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PANKAJ | Interactive Menu & Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,700&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js" type="module"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js" type="module"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js" type="module"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; scroll-behavior: smooth; }
+        h1, h2, .brand { font-family: 'Playfair Display', serif; }
+        
+        #userView, #adminView {
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+
+        .menu-card { 
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border-left: 0px solid transparent;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        
+        .menu-card.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .menu-card:hover { 
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px -10px rgba(0,0,0,0.1);
+            border-left: 4px solid #1a1a1a;
+            background-color: #fff;
+        }
+
+        .category-btn {
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .category-btn.active {
+            background-color: #1a1a1a;
+            color: white;
+            border-color: #1a1a1a;
+            transform: scale(1.05);
+        }
+        
+        .loader {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #1a1a1a;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .fade-in-up {
+            animation: fadeInUp 0.6s ease-out forwards;
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .modal-bg {
+            backdrop-filter: blur(4px);
+            transition: all 0.3s ease;
+        }
+
+        .row-hidden {
+            opacity: 0.5;
+            background-color: #f9f8f6;
+        }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-stone-50 text-stone-900">
+
+    <!-- Header -->
+    <header class="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-stone-200 shadow-sm">
+        <div class="max-w-5xl mx-auto px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-6">
+                <div class="brand text-3xl font-bold tracking-tight cursor-pointer hover:opacity-80 transition-opacity" onclick="showView('user')">PANKAJ</div>
+                <button id="adminToggleBtn" onclick="openLoginModal()" class="text-[10px] uppercase tracking-[0.2em] bg-stone-100 px-3 py-1 rounded border border-stone-200 text-stone-500 hover:text-stone-900 hover:bg-stone-200 font-bold transition-all">
+                    Admin Access
+                </button>
+            </div>
+            
+            <div id="searchBarContainer" class="relative w-full md:w-64 transition-all duration-300">
+                <input type="text" id="menuSearch" placeholder="Search dishes..." 
+                    class="w-full pl-10 pr-4 py-2 border border-stone-200 rounded-full bg-stone-50 focus:outline-none focus:ring-2 focus:ring-stone-200 focus:bg-white transition-all">
+                <svg class="w-4 h-4 absolute left-4 top-3 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+            </div>
+        </div>
+    </header>
+
+    <!-- Admin Login Modal -->
+    <div id="loginModal" class="fixed inset-0 z-[110] hidden flex items-center justify-center p-4 bg-black/40 modal-bg">
+        <div class="bg-white rounded-2xl w-full max-w-sm p-8 shadow-2xl fade-in-up border border-stone-100">
+            <h3 class="text-2xl font-bold mb-2">Admin Login</h3>
+            <p class="text-stone-500 text-sm mb-6">Enter credentials to manage your digital menu.</p>
+            <form id="loginForm">
+                <div class="mb-4">
+                    <input type="password" id="adminPassword" placeholder="Password (default: admin)" required 
+                        class="w-full px-4 py-3 border border-stone-200 rounded-xl focus:ring-2 focus:ring-stone-200 outline-none transition-all">
+                </div>
+                <div id="loginError" class="hidden text-red-500 text-xs mb-4 font-medium italic">Incorrect password. Please try again.</div>
+                <div class="flex gap-3">
+                    <button type="button" onclick="closeLoginModal()" class="flex-1 py-3 border border-stone-200 rounded-xl hover:bg-stone-50 font-semibold transition-all">Cancel</button>
+                    <button type="submit" class="flex-1 py-3 bg-stone-900 text-white rounded-xl hover:bg-black font-semibold shadow-lg active:scale-95 transition-all">Login</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- User View -->
+    <div id="userView" class="opacity-100">
+        <section class="py-20 px-6 text-center max-w-3xl mx-auto fade-in-up">
+            <h1 class="text-7xl font-bold mb-6 italic tracking-tight">The Menu</h1>
+            <p class="text-stone-400 text-xs uppercase tracking-[0.4em] font-medium">PANKAJ • Culinary Excellence • Since 1998</p>
+        </section>
+
+        <nav class="sticky top-[148px] md:top-[77px] z-40 bg-stone-50/90 backdrop-blur-md py-4 border-b border-stone-200">
+            <div id="categoryContainer" class="max-w-5xl mx-auto px-6 flex gap-3 overflow-x-auto no-scrollbar scroll-smooth"></div>
+        </nav>
+
+        <main class="max-w-5xl mx-auto px-6 py-12 min-h-[600px]">
+            <div id="loadingOverlay" class="flex flex-col items-center justify-center py-24 gap-4">
+                <div class="loader"></div>
+                <p class="text-stone-400 text-[10px] uppercase tracking-widest font-bold">Curating Flavors...</p>
+            </div>
+            <div id="menuGrid" class="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8"></div>
+            <div id="noResults" class="hidden py-32 text-center fade-in-up">
+                <div class="text-5xl mb-4">🍽️</div>
+                <p class="text-xl text-stone-400 italic">We couldn't find that dish today.</p>
+                <button onclick="clearSearch()" class="mt-4 text-stone-900 font-bold border-b-2 border-stone-900 pb-1 hover:text-stone-600 hover:border-stone-600 transition-all">View full menu</button>
+            </div>
+        </main>
+    </div>
+
+    <!-- Admin View -->
+    <div id="adminView" class="hidden opacity-0 translate-y-4 min-h-screen p-6 md:p-12 bg-white">
+        <div class="max-w-5xl mx-auto">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
+                <div>
+                    <h2 class="text-4xl font-bold mb-1">Store Inventory</h2>
+                    <p class="text-stone-400 text-sm font-medium">Live management portal for PANKAJ Kitchen.</p>
+                </div>
+                <div class="flex gap-3 w-full md:w-auto">
+                    <button onclick="logoutAdmin()" class="flex-1 md:flex-none px-6 py-3 border border-stone-200 rounded-xl font-semibold hover:bg-stone-50 transition-all text-sm">
+                        Exit Portal
+                    </button>
+                    <button onclick="openModal()" class="flex-1 md:flex-none bg-stone-900 text-white px-8 py-3 rounded-xl font-semibold hover:bg-black transition-all shadow-xl active:scale-95 text-sm">
+                        + Add Dish
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-stone-100 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead class="bg-stone-50 text-stone-400 text-[9px] uppercase tracking-[0.2em] font-bold">
+                            <tr>
+                                <th class="px-8 py-6">Dish Name</th>
+                                <th class="px-8 py-6 text-center">Category</th>
+                                <th class="px-8 py-6 text-center">Price</th>
+                                <th class="px-8 py-6 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminTableBody" class="divide-y divide-stone-50"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Add/Edit -->
+    <div id="itemModal" class="fixed inset-0 z-[100] hidden flex items-center justify-center p-4 bg-black/40 modal-bg">
+        <div class="bg-white rounded-2xl w-full max-w-lg p-8 shadow-2xl fade-in-up border border-stone-100">
+            <h3 id="modalTitle" class="text-3xl font-bold mb-6">Item Details</h3>
+            <form id="itemForm" class="space-y-6">
+                <input type="hidden" id="editId">
+                <div class="group">
+                    <label class="block text-[10px] font-bold uppercase text-stone-400 mb-2 tracking-widest">Dish Title</label>
+                    <input type="text" id="formName" required class="w-full px-4 py-4 border border-stone-200 rounded-xl focus:ring-2 focus:ring-stone-200 outline-none transition-all">
+                </div>
+                <div class="grid grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase text-stone-400 mb-2 tracking-widest">Section</label>
+                        <select id="formCategory" class="w-full px-4 py-4 border border-stone-200 rounded-xl focus:ring-2 focus:ring-stone-200 outline-none transition-all appearance-none bg-white cursor-pointer">
+                            <option>Breakfast</option>
+                            <option>Kerala</option>
+                            <option>Chinese</option>
+                            <option>Arabic</option>
+                            <option>Curry</option>
+                            <option>Drinks</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase text-stone-400 mb-2 tracking-widest">Price (INR)</label>
+                        <input type="number" id="formPrice" step="1" required class="w-full px-4 py-4 border border-stone-200 rounded-xl focus:ring-2 focus:ring-stone-200 outline-none transition-all">
+                    </div>
+                </div>
+                <div class="flex gap-4 pt-4">
+                    <button type="button" onclick="closeModal()" class="flex-1 py-4 border border-stone-200 rounded-xl hover:bg-stone-50 font-semibold transition-all">Cancel</button>
+                    <button type="submit" id="saveItemBtn" class="flex-1 py-4 bg-stone-900 text-white rounded-xl hover:bg-black font-semibold shadow-lg active:scale-95 transition-all">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete Modal -->
+    <div id="deleteModal" class="fixed inset-0 z-[120] hidden flex items-center justify-center p-4 bg-black/40 modal-bg">
+        <div class="bg-white rounded-2xl w-full max-w-sm p-8 shadow-2xl fade-in-up text-center">
+            <div class="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            </div>
+            <h3 class="text-xl font-bold mb-2">Remove Item?</h3>
+            <p class="text-stone-500 text-sm mb-6">Are you sure you want to remove <span id="deleteItemName" class="font-bold text-stone-800"></span>?</p>
+            <div class="flex gap-3">
+                <button onclick="closeDeleteModal()" class="flex-1 py-3 border border-stone-200 rounded-xl hover:bg-stone-50 font-semibold transition-all">Cancel</button>
+                <button id="confirmDeleteBtn" class="flex-1 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 font-semibold shadow-md active:scale-95 transition-all">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="bg-white border-t border-stone-100 py-16 mt-20">
+        <div class="max-w-5xl mx-auto px-6 text-center">
+            <div class="brand text-3xl mb-3 font-bold tracking-tight">PANKAJ</div>
+            <p class="text-stone-400 text-[10px] uppercase tracking-[0.3em] mb-8 font-medium">Fine Dining Experience</p>
+            <p id="adminStatusText" class="text-stone-300 text-[9px] font-bold uppercase tracking-[0.2em]">Verified Digital Menu</p>
+        </div>
+    </footer>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Configuration (Automatically injected by environment)
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'pankaj-rest-app';
+
+        let menuData = [];
+        let user = null;
+        let activeCategory = "All";
+        let searchTerm = "";
+        let itemToDeleteId = null;
+        let isEditing = false;
+
+        const CATEGORIES = ["All", "Breakfast", "Kerala", "Chinese", "Arabic", "Curry", "Drinks"];
+
+        const initAuth = async () => {
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                await signInWithCustomToken(auth, __initial_auth_token);
+            } else {
+                await signInAnonymously(auth);
+            }
+        };
+
+        onAuthStateChanged(auth, (u) => {
+            user = u;
+            if (user) setupRealtimeListener();
+        });
+
+        initAuth();
+
+        function setupRealtimeListener() {
+            if (!user) return;
+            // Public path for menu sharing
+            const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'menu');
+            onSnapshot(colRef, (snapshot) => {
+                menuData = snapshot.docs.map(doc => ({ id: doc.id, isVisible: true, ...doc.data() }));
+                document.getElementById('loadingOverlay').classList.add('hidden');
+                renderCategories();
+                renderMenu();
+                renderAdminTable();
+            }, (error) => console.error("Firestore error:", error));
+        }
+
+        window.setCategory = (cat) => {
+            activeCategory = cat;
+            renderCategories();
+            renderMenu();
+        };
+
+        window.showView = (view) => {
+            const userView = document.getElementById('userView');
+            const adminView = document.getElementById('adminView');
+            const searchBar = document.getElementById('searchBarContainer');
+            
+            if (view === 'admin') {
+                userView.classList.replace('opacity-100', 'opacity-0');
+                setTimeout(() => {
+                    userView.classList.add('hidden');
+                    adminView.classList.remove('hidden');
+                    setTimeout(() => {
+                        adminView.classList.replace('opacity-0', 'opacity-100');
+                        adminView.classList.replace('translate-y-4', 'translate-y-0');
+                    }, 50);
+                }, 400);
+                searchBar.classList.add('opacity-0', 'pointer-events-none', 'scale-95');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+                adminView.classList.replace('opacity-100', 'opacity-0');
+                adminView.classList.replace('translate-y-0', 'translate-y-4');
+                setTimeout(() => {
+                    adminView.classList.add('hidden');
+                    userView.classList.remove('hidden');
+                    setTimeout(() => {
+                        userView.classList.replace('opacity-0', 'opacity-100');
+                    }, 50);
+                }, 400);
+                searchBar.classList.remove('opacity-0', 'pointer-events-none', 'scale-95');
+                renderMenu();
+            }
+        };
+
+        function renderCategories() {
+            const container = document.getElementById('categoryContainer');
+            if(!container) return;
+            container.innerHTML = CATEGORIES.map(cat => `
+                <button onclick="setCategory('${cat}')" 
+                    class="category-btn whitespace-nowrap px-8 py-2 rounded-full border border-stone-200 text-[10px] uppercase tracking-widest font-bold active:scale-95 ${activeCategory === cat ? 'active' : 'bg-white text-stone-500'}">
+                    ${cat}
+                </button>
+            `).join('');
+        }
+
+        function renderMenu() {
+            const grid = document.getElementById('menuGrid');
+            const noResults = document.getElementById('noResults');
+            if(!grid) return;
+            
+            const filtered = menuData.filter(item => {
+                const matchesCat = activeCategory === "All" || item.category === activeCategory;
+                const matchesSearch = (item.name || "").toLowerCase().includes(searchTerm);
+                const isItemVisible = item.isVisible !== false; 
+                return matchesCat && matchesSearch && isItemVisible;
+            });
+
+            if (filtered.length === 0) { 
+                grid.innerHTML = ""; 
+                noResults.classList.remove('hidden'); 
+                return; 
+            }
+            
+            noResults.classList.add('hidden');
+            grid.innerHTML = filtered.map((item, index) => `
+                <div class="menu-card bg-white p-8 border border-stone-50 shadow-sm relative overflow-hidden rounded-xl" style="transition-delay: ${index * 50}ms">
+                    <div class="flex justify-between items-baseline">
+                        <h3 class="text-2xl font-bold tracking-tight">${item.name}</h3>
+                        <div class="h-[1px] flex-grow mx-4 border-b border-stone-100"></div>
+                        <span class="text-xl font-bold text-stone-900">₹${item.price}</span>
+                    </div>
+                    <span class="absolute top-2 right-4 text-[8px] uppercase tracking-[0.2em] text-stone-300 font-bold">${item.category}</span>
+                </div>
+            `).join('');
+
+            setTimeout(() => {
+                document.querySelectorAll('.menu-card').forEach(card => card.classList.add('visible'));
+            }, 10);
+        }
+
+        window.toggleVisibility = async (id, currentStatus) => {
+            if (!user) return;
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'menu', id);
+            await updateDoc(docRef, { isVisible: !currentStatus });
+        };
+
+        function renderAdminTable() {
+            const tbody = document.getElementById('adminTableBody');
+            if(!tbody) return;
+            tbody.innerHTML = menuData.map(item => `
+                <tr class="hover:bg-stone-50/50 transition-colors ${item.isVisible === false ? 'row-hidden' : ''}">
+                    <td class="px-8 py-6">
+                        <div class="flex flex-col">
+                            <span class="font-bold text-stone-900 text-base">${item.name}</span>
+                            ${item.isVisible === false ? '<span class="text-[9px] font-bold text-stone-400 uppercase tracking-tighter">Temporarily Hidden</span>' : ''}
+                        </div>
+                    </td>
+                    <td class="px-8 py-6 text-center">
+                        <span class="px-3 py-1 bg-stone-100 rounded-full text-[8px] font-bold uppercase tracking-widest text-stone-500 border border-stone-200">${item.category}</span>
+                    </td>
+                    <td class="px-8 py-6 text-center font-bold text-stone-900">₹${item.price}</td>
+                    <td class="px-8 py-6 text-right">
+                        <div class="flex justify-end gap-2">
+                            <button onclick="toggleVisibility('${item.id}', ${item.isVisible !== false})" 
+                                class="p-3 ${item.isVisible !== false ? 'text-stone-400 hover:text-stone-900' : 'text-stone-900 hover:text-stone-400'} hover:bg-white hover:shadow-sm rounded-xl transition-all"
+                                title="${item.isVisible !== false ? 'Hide from menu' : 'Show on menu'}">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    ${item.isVisible !== false ? 
+                                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />' : 
+                                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />'}
+                                </svg>
+                            </button>
+                            <button onclick="editItem('${item.id}')" class="p-3 text-stone-400 hover:text-stone-900 hover:bg-white hover:shadow-sm rounded-xl transition-all">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                            </button>
+                            <button onclick="openDeleteModal('${item.id}')" class="p-3 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        window.openLoginModal = () => {
+            if (isEditing) window.showView('admin');
+            else document.getElementById('loginModal').classList.remove('hidden');
+        };
+
+        window.closeLoginModal = () => {
+            document.getElementById('loginModal').classList.add('hidden');
+            document.getElementById('adminPassword').value = "";
+        };
+
+        document.getElementById('loginForm').onsubmit = (e) => {
+            e.preventDefault();
+            if (document.getElementById('adminPassword').value === "admin") {
+                isEditing = true;
+                document.getElementById('adminStatusText').innerText = "Authorized Administrator";
+                window.closeLoginModal();
+                window.showView('admin');
+            } else { 
+                const err = document.getElementById('loginError');
+                err.classList.remove('hidden');
+                err.classList.add('fade-in-up');
+            }
+        };
+
+        window.logoutAdmin = () => { isEditing = false; window.showView('user'); };
+
+        window.openModal = (editId = null) => {
+            const modal = document.getElementById('itemModal');
+            document.getElementById('itemForm').reset();
+            modal.classList.remove('hidden');
+            if (editId) {
+                const item = menuData.find(i => i.id === editId);
+                document.getElementById('modalTitle').innerText = "Update Selection";
+                document.getElementById('editId').value = item.id;
+                document.getElementById('formName').value = item.name;
+                document.getElementById('formCategory').value = item.category;
+                document.getElementById('formPrice').value = item.price;
+            } else {
+                document.getElementById('modalTitle').innerText = "New Creation";
+                document.getElementById('editId').value = "";
+            }
+        };
+
+        window.closeModal = () => document.getElementById('itemModal').classList.add('hidden');
+
+        document.getElementById('itemForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('saveItemBtn');
+            btn.innerText = "Saving...";
+            btn.disabled = true;
+            
+            const id = document.getElementById('editId').value;
+            const itemObj = {
+                name: document.getElementById('formName').value,
+                category: document.getElementById('formCategory').value,
+                price: parseInt(document.getElementById('formPrice').value),
+                isVisible: true,
+                updatedAt: Date.now()
+            };
+            const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'menu');
+            if (id) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'menu', id), itemObj);
+            else await addDoc(colRef, itemObj);
+            
+            btn.innerText = "Save Changes";
+            btn.disabled = false;
+            window.closeModal();
+        };
+
+        window.editItem = (id) => window.openModal(id);
+        
+        window.openDeleteModal = (id) => {
+            const item = menuData.find(i => i.id === id);
+            itemToDeleteId = id;
+            document.getElementById('deleteItemName').innerText = item.name;
+            document.getElementById('deleteModal').classList.remove('hidden');
+        };
+        
+        window.closeDeleteModal = () => document.getElementById('deleteModal').classList.add('hidden');
+        
+        document.getElementById('confirmDeleteBtn').onclick = async () => {
+            if (itemToDeleteId) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'menu', itemToDeleteId));
+            window.closeDeleteModal();
+        };
+
+        document.getElementById('menuSearch').addEventListener('input', (e) => {
+            searchTerm = e.target.value.toLowerCase();
+            renderMenu();
+        });
+
+        window.clearSearch = () => {
+            document.getElementById('menuSearch').value = "";
+            searchTerm = "";
+            renderMenu();
+        };
+    </script>
+</body>
+</html>
